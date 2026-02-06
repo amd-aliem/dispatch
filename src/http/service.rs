@@ -27,6 +27,7 @@ pub struct Service {
     github: Arc<GitHub>,
     client: Client,
     path: Arc<String>,
+    ssh_key: Arc<Option<String>>,
 }
 
 impl Service {
@@ -36,6 +37,7 @@ impl Service {
         github: Arc<GitHub>,
         client: Client,
         path: Arc<String>,
+        ssh_key: Arc<Option<String>>,
     ) -> Self {
         Self {
             remote,
@@ -43,6 +45,7 @@ impl Service {
             github,
             client,
             path,
+            ssh_key,
         }
     }
 
@@ -70,6 +73,36 @@ impl Service {
             _ => client.get(url),
         }
     }
+
+    /// Fetch a user-provided public SSH key
+    fn fetch_ssh(
+        ssh_key: Option<&String>,
+        path: &str,
+        base_path: &str,
+    ) -> Option<Response<BoxBody<Bytes, Infallible>>> {
+        // Check for SSH key endpoint
+        if path != format!("{base_path}/ssh-key") {
+            return None;
+        }
+
+        // Return key if it exists
+        match ssh_key {
+            Some(key) => {
+                let bytes = Bytes::from(key.clone());
+                Some(
+                    Response::builder()
+                        .status(Code::OK)
+                        .header("content-type", "text/plain")
+                        .header("content-length", bytes.len())
+                        .body(BoxBody::new(StreamBody::new(Box::pin(stream::once(
+                            async move { Ok(Frame::data(bytes)) },
+                        )))))
+                        .ok()?,
+                )
+            }
+            None => Some(EMPTY.reply(Code::NOT_FOUND, None, None)),
+        }
+    }
 }
 
 impl hyper::service::Service<Request<Incoming>> for Service {
@@ -82,6 +115,7 @@ impl hyper::service::Service<Request<Incoming>> for Service {
         let client = self.client.clone();
         let github = self.github.clone();
         let path = self.path.clone();
+        let ssh_key = self.ssh_key.clone();
         let remote = self.remote;
 
         Box::pin(async move {
@@ -146,6 +180,12 @@ impl hyper::service::Service<Request<Incoming>> for Service {
 
                 // The GET request is used to fetch the assigned asset.
                 Method::GET => {
+                    if let Some(response) =
+                        Self::fetch_ssh(ssh_key.as_ref().as_ref(), req.uri().path(), &path)
+                    {
+                        return Ok(response);
+                    }
+
                     match status.clone().assign(remote).await {
                         // No asset assigned, return poweroff EFI binary.
                         None => return Ok(POWEROFF_EFI.reply(None, Type::Efi, None)),

@@ -44,6 +44,10 @@ struct Args {
     /// Path to offer services on
     #[arg(short = 'p', long, default_value = concat!("/", std::env!("CARGO_PKG_NAME")))]
     path: String,
+
+    /// Path to SSH public key file
+    #[arg(long)]
+    ssh_key_file: Option<std::path::PathBuf>,
 }
 
 /// Guard that ensures term settings are restored upon program exit
@@ -64,6 +68,13 @@ async fn main() -> Result<()> {
     // Parse arguments
     let args = Args::parse();
 
+    // Read SSH public key file if provided
+    let ssh_key = match args.ssh_key_file {
+        Some(path) => Some(std::fs::read_to_string(path)?),
+        None => None,
+    };
+    let ssh_key = Arc::new(ssh_key);
+
     // Ensure we're authenticated with GitHub
     let github = Arc::new(args.github.login().await?);
 
@@ -83,7 +94,7 @@ async fn main() -> Result<()> {
     status.lock().await.render()?;
 
     // Create the HTTP server
-    let server = Server::new(listener, status.clone(), github, path.clone())?;
+    let server = Server::new(listener, status.clone(), github, path.clone(), ssh_key)?;
 
     // Create TXT records
     let name = std::env!("CARGO_PKG_NAME");

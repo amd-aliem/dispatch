@@ -17,6 +17,7 @@ pub struct Server {
     github: Arc<GitHub>,
     client: Client,
     path: Arc<String>,
+    ssh_key: Arc<Option<String>>,
 }
 
 impl Server {
@@ -28,6 +29,7 @@ impl Server {
         status: Arc<Mutex<Status>>,
         github: Arc<GitHub>,
         path: Arc<String>,
+        ssh_key: Arc<Option<String>>,
     ) -> reqwest::Result<Self> {
         let policy = Policy::custom(move |attempt| {
             if attempt.previous().len() > Self::REDIRECTS {
@@ -79,6 +81,7 @@ impl Server {
             github,
             client: client_builder.build()?,
             path,
+            ssh_key,
         })
     }
 
@@ -90,11 +93,12 @@ impl Server {
             let github = self.github.clone();
             let client = self.client.clone();
             let path = self.path.clone();
+            let ssh_key = self.ssh_key.clone();
 
             // Spawn a new task to handle the connection.
             tokio::spawn(async move {
                 let stream = TokioIo::new(stream);
-                let service = Service::new(addr.ip(), status, github, client, path);
+                let service = Service::new(addr.ip(), status, github, client, path, ssh_key);
                 Builder::new().serve_connection(stream, service).await
             });
         }
