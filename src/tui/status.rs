@@ -61,11 +61,10 @@ impl Job {
 
     fn row(&self) -> Row<'static> {
         let style = self.style();
-        let ip = self.state.ip().map(|ip| ip.to_string()).unwrap_or_default();
+        let ip = self.state.ip().map_or_default(|ip| ip.to_string());
         let seen = self
             .seen
-            .map(|time| DateTime::<Local>::from(time).format("%H:%M").to_string())
-            .unwrap_or_default();
+            .map_or_default(|time| DateTime::<Local>::from(time).format("%H:%M").to_string());
 
         Row::new(vec![
             Cell::from(self.state.emoji()),
